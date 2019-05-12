@@ -4,13 +4,15 @@ defmodule Phx.New.Umbrella do
   alias Phx.New.{Ecto, Web, Project}
 
   template :new, [
-    {:eex,  "phx_umbrella/gitignore",         :project, ".gitignore"},
-    {:eex,  "phx_umbrella/config/config.exs", :project, "config/config.exs"},
-    {:eex,  "phx_umbrella/config/dev.exs",    :project, "config/dev.exs"},
-    {:eex,  "phx_umbrella/config/test.exs",   :project, "config/test.exs"},
-    {:eex,  "phx_umbrella/config/prod.exs",   :project, "config/prod.exs"},
-    {:eex,  "phx_umbrella/mix.exs",           :project, "mix.exs"},
-    {:eex,  "phx_umbrella/README.md",         :project, "README.md"},
+    {:eex,  "phx_umbrella/gitignore",              :project, ".gitignore"},
+    {:eex,  "phx_umbrella/config/config.exs",      :project, "config/config.exs"},
+    {:eex,  "phx_umbrella/config/dev.exs",         :project, "config/dev.exs"},
+    {:eex,  "phx_umbrella/config/test.exs",        :project, "config/test.exs"},
+    {:eex,  "phx_umbrella/config/prod.exs",        :project, "config/prod.exs"},
+    {:eex,  "phx_umbrella/config/prod.secret.exs", :project, "config/prod.secret.exs"},
+    {:eex,  "phx_umbrella/mix.exs",                :project, "mix.exs"},
+    {:eex,  "phx_umbrella/README.md",              :project, "README.md"},
+    {:eex,  "phx_umbrella/formatter.exs",          :project, ".formatter.exs"},
   ]
 
   def prepare_project(%Project{app: app} = project) when not is_nil(app) do
@@ -28,13 +30,15 @@ defmodule Phx.New.Umbrella do
              app_path: app_path,
              project_path: project_path}
   end
-  def put_web(%Project{opts: opts} = project) do
-    web_app = :"#{project.app}_web"
-    web_namespace = Module.concat([opts[:web_module] || "#{project.app_mod}.Web"])
+  def put_web(%Project{app: app, opts: opts} = project) do
+    web_app = :"#{app}_web"
+    web_namespace = Module.concat([opts[:web_module] || "#{project.app_mod}Web"])
 
     %Project{project |
              web_app: web_app,
+             lib_web_name: web_app,
              web_namespace: web_namespace,
+             generators: [context_app: :"#{app}"],
              web_path: Path.join(project.project_path, "apps/#{web_app}/")}
   end
 

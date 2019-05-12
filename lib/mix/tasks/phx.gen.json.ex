@@ -2,7 +2,7 @@ defmodule Mix.Tasks.Phx.Gen.Json do
   @shortdoc "Generates controller, views, and context for a JSON resource"
 
   @moduledoc """
-  Generates controller, views, and context for an JSON resource.
+  Generates controller, views, and context for a JSON resource.
 
       mix phx.gen.json Accounts User users name:string age:integer
 
@@ -12,18 +12,20 @@ defmodule Mix.Tasks.Phx.Gen.Json do
   The context is an Elixir module that serves as an API boundary for
   the given resource. A context often holds many related resources.
   Therefore, if the context already exists, it will be augmented with
-  functions for the given resource. Note a resource may also be split
-  over distinct contexts (such as Accounts.User and Payments.User).
+  functions for the given resource.
+
+  > Note: A resource may also be split
+  > over distinct contexts (such as `Accounts.User` and `Payments.User`).
 
   The schema is responsible for mapping the database fields into an
   Elixir struct.
 
-  Overall, this generator will add the following files to lib/your_app:
+  Overall, this generator will add the following files to `lib/`:
 
-    * a context module in accounts/accounts.ex, serving as the API boundary
-    * a schema in accounts/user.ex, with an `accounts_users` table
-    * a view in web/views/user_view.ex
-    * a controller in web/controllers/user_controller.ex
+    * a context module in `lib/app/accounts.ex` for the accounts API
+    * a schema in `lib/app/accounts/user.ex`, with an `users` table
+    * a view in `lib/app_web/views/user_view.ex`
+    * a controller in `lib/app_web/controllers/user_controller.ex`
 
   A migration file for the repository and test files for the context and
   controller features will also be generated.
@@ -42,7 +44,7 @@ defmodule Mix.Tasks.Phx.Gen.Json do
 
   Alternatively, the `--context-app` option may be supplied to the generator:
 
-      mix phx.gen.html Sales User users --context-app warehouse
+      mix phx.gen.json Sales User users --context-app warehouse
 
   ## Web namespace
 
@@ -50,14 +52,14 @@ defmodule Mix.Tasks.Phx.Gen.Json do
   You can customize the web module namespace by passing the `--web` flag with a
   module name, for example:
 
-      mix phx.gen.html Sales User users --web Sales
+      mix phx.gen.json Sales User users --web Sales
 
-  Which would geneate a `web/controllers/sales/user_controller.ex` and
-  `web/views/sales/user_view.ex`.
+  Which would generate a `lib/app_web/controllers/sales/user_controller.ex` and
+  `lib/app_web/views/sales/user_view.ex`.
 
   ## Generating without a schema or context file
 
-  In some cases, you may wish to boostrap JSON views, controllers, and
+  In some cases, you may wish to bootstrap JSON views, controllers, and
   controller tests, but leave internal implementation of the context or schema
   to yourself. You can use the `--no-context` and `--no-schema` flags for
   file generation control.
@@ -105,6 +107,8 @@ defmodule Mix.Tasks.Phx.Gen.Json do
     end
 
     {context, schema} = Gen.Context.build(args)
+    Gen.Context.prompt_for_code_injection(context)
+
     binding = [context: context, schema: schema]
     paths = Mix.Phoenix.generator_paths()
 
@@ -146,7 +150,7 @@ defmodule Mix.Tasks.Phx.Gen.Json do
   @doc false
   def copy_new_files(%Context{} = context, paths, binding) do
     files = files_to_be_generated(context)
-    Mix.Phoenix.copy_from paths, "priv/templates/phx.gen.json", "", binding, files
+    Mix.Phoenix.copy_from paths, "priv/templates/phx.gen.json", binding, files
     if context.generate?, do: Gen.Context.copy_new_files(context, paths, binding)
 
     context
@@ -168,7 +172,7 @@ defmodule Mix.Tasks.Phx.Gen.Json do
     else
       Mix.shell.info """
 
-      Add the resource to your :api scope in lib/#{Mix.Phoenix.otp_app()}/web/router.ex:
+      Add the resource to your :api scope in #{Mix.Phoenix.web_path(ctx_app)}/router.ex:
 
           resources "/#{schema.plural}", #{inspect schema.alias}Controller, except: [:new, :edit]
       """

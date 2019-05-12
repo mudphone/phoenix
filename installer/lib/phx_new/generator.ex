@@ -4,6 +4,7 @@ defmodule Phx.New.Generator do
   alias Phx.New.{Project}
 
   @phoenix Path.expand("../..", __DIR__)
+  @phoenix_version Version.parse!("1.4.0")
 
   @callback prepare_project(Project.t) :: Project.t
   @callback generate(Project.t) :: Project.t
@@ -11,8 +12,8 @@ defmodule Phx.New.Generator do
   defmacro __using__(_env) do
     quote do
       @behaviour unquote(__MODULE__)
-      import unquote(__MODULE__)
       import Mix.Generator
+      import unquote(__MODULE__)
       Module.register_attribute(__MODULE__, :templates, accumulate: true)
       @before_compile unquote(__MODULE__)
     end
@@ -20,23 +21,21 @@ defmodule Phx.New.Generator do
 
   defmacro __before_compile__(env) do
     root = Path.expand("../../templates", __DIR__)
-    templates_ast = for {name, mappings} <- Module.get_attribute(env.module, :templates) do
-      for {format, source, _, _} <- mappings, format != :keep do
-        path = Path.join(root, source)
-        quote do
-          @external_resource unquote(path)
-          def render(unquote(name), unquote(source)), do: unquote(File.read!(path))
+
+    templates_ast =
+      for {name, mappings} <- Module.get_attribute(env.module, :templates) do
+        for {format, source, _, _} <- mappings, format != :keep do
+          path = Path.join(root, source)
+          quote do
+            @external_resource unquote(path)
+            def render(unquote(name), unquote(source)), do: unquote(File.read!(path))
+          end
         end
       end
-    end
 
     quote do
       unquote(templates_ast)
       def template_files(name), do: Keyword.fetch!(@templates, name)
-      # Embed missing files from Phoenix static.
-      embed_text :phoenix_js, from_file: Path.expand("../../../priv/static/phoenix.js", unquote(__DIR__))
-      embed_text :phoenix_png, from_file: Path.expand("../../../priv/static/phoenix.png", unquote(__DIR__))
-      embed_text :phoenix_favicon, from_file: Path.expand("../../../priv/static/favicon.ico", unquote(__DIR__))
     end
   end
 
@@ -56,8 +55,9 @@ defmodule Phx.New.Generator do
           File.mkdir_p!(target)
         :text ->
           create_file(target, mod.render(name, source))
-        :append ->
-          append_to(Path.dirname(target), Path.basename(target), mod.render(name, source))
+        :config ->
+          contents = EEx.eval_string(mod.render(name, source), project.binding, file: source)
+          config_inject(Path.dirname(target), Path.basename(target), contents)
         :eex  ->
           contents = EEx.eval_string(mod.render(name, source), project.binding, file: source)
           create_file(target, contents)
@@ -65,9 +65,29 @@ defmodule Phx.New.Generator do
     end
   end
 
-  def append_to(path, file, contents) do
+  def config_inject(path, file, to_inject) do
     file = Path.join(path, file)
-    File.write!(file, File.read!(file) <> contents)
+
+    contents =
+      case File.read(file) do
+        {:ok, bin} -> bin
+        {:error, _} -> "use Mix.Config\n"
+      end
+
+    with :error <- split_with_self(contents, "use Mix.Config\n"),
+         :error <- split_with_self(contents, "import Config\n") do
+      Mix.raise ~s[Could not find "use Mix.Config" or "import Config" in #{inspect(file)}]
+    else
+      [left, middle, right] ->
+        File.write!(file, [left, middle, ?\n, String.trim(to_inject), ?\n, right])
+    end
+  end
+
+  defp split_with_self(contents, text) do
+    case :binary.split(contents, text) do
+      [left, right] -> [left, text, right]
+      [_] -> :error
+    end
   end
 
   def in_umbrella?(app_path) do
@@ -82,7 +102,7 @@ defmodule Phx.New.Generator do
     db           = Keyword.get(opts, :database, "postgres")
     ecto         = Keyword.get(opts, :ecto, true)
     html         = Keyword.get(opts, :html, true)
-    brunch       = Keyword.get(opts, :brunch, true)
+    webpack      = Keyword.get(opts, :webpack, true)
     dev          = Keyword.get(opts, :dev, false)
     phoenix_path = phoenix_path(project, dev)
 
@@ -101,65 +121,75 @@ defmodule Phx.New.Generator do
         :error -> adapter_config
       end
 
+    version = @phoenix_version
+
     binding = [
+      elixir_version: elixir_version(),
       app_name: project.app,
       app_module: inspect(project.app_mod),
       root_app_name: project.root_app,
       root_app_module: inspect(project.root_mod),
+      lib_web_name: project.lib_web_name,
       web_app_name: project.web_app,
       endpoint_module: inspect(Module.concat(project.web_namespace, Endpoint)),
       web_namespace: inspect(project.web_namespace),
+      phoenix_github_version_tag: "v#{version.major}.#{version.minor}",
       phoenix_dep: phoenix_dep(phoenix_path),
       phoenix_path: phoenix_path,
-      phoenix_brunch_path: phoenix_brunch_path(project, dev),
-      phoenix_html_brunch_path: phoenix_html_brunch_path(project),
+      phoenix_webpack_path: phoenix_webpack_path(project, dev),
+      phoenix_html_webpack_path: phoenix_html_webpack_path(project),
       phoenix_static_path: phoenix_static_path(phoenix_path),
       pubsub_server: pubsub_server,
       secret_key_base: random_string(64),
-      prod_secret_key_base: random_string(64),
       signing_salt: random_string(8),
       in_umbrella: project.in_umbrella?,
-      brunch: brunch,
+      webpack: webpack,
       ecto: ecto,
       html: html,
       adapter_app: adapter_app,
       adapter_module: adapter_module,
       adapter_config: adapter_config,
-      hex?: Code.ensure_loaded?(Hex),
-      generators: generators(adapter_config),
-      namespaced?: namespaced?(project)]
+      generators: nil_if_empty(project.generators ++ adapter_generators(adapter_config)),
+      namespaced?: namespaced?(project),
+    ]
 
     %Project{project | binding: binding}
   end
 
-  defp namespaced?(project) do
-    project.in_umbrella? || Macro.camelize(project.app) != inspect(project.app_mod)
+  defp elixir_version do
+    System.version()
   end
 
-  def gen_ecto_config(%Project{app_path: app_path, binding: binding}) do
+  defp namespaced?(project) do
+    Macro.camelize(project.app) != inspect(project.app_mod)
+  end
+
+  def gen_ecto_config(%Project{project_path: project_path, binding: binding}) do
     adapter_config = binding[:adapter_config]
 
-    append_to app_path, "config/dev.exs", """
-
+    config_inject project_path, "config/dev.exs", """
     # Configure your database
-    config :#{binding[:app_name]}, #{binding[:app_module]}.Repo,
-      adapter: #{inspect binding[:adapter_module]}#{kw_to_config adapter_config[:dev]},
+    config :#{binding[:app_name]}, #{binding[:app_module]}.Repo#{kw_to_config adapter_config[:dev]},
       pool_size: 10
     """
 
-    append_to app_path, "config/test.exs", """
-
+    config_inject project_path, "config/test.exs", """
     # Configure your database
-    config :#{binding[:app_name]}, #{binding[:app_module]}.Repo,
-      adapter: #{inspect binding[:adapter_module]}#{kw_to_config adapter_config[:test]}
+    config :#{binding[:app_name]}, #{binding[:app_module]}.Repo#{kw_to_config adapter_config[:test]}
     """
 
-    append_to app_path, "config/prod.secret.exs", """
+    config_inject project_path, "config/prod.secret.exs", """
+    database_url =
+      System.get_env("DATABASE_URL") ||
+        raise \"""
+        environment variable DATABASE_URL is missing.
+        For example: ecto://USER:PASS@HOST/DATABASE
+        \"""
 
-    # Configure your database
     config :#{binding[:app_name]}, #{binding[:app_module]}.Repo,
-      adapter: #{inspect binding[:adapter_module]}#{kw_to_config adapter_config[:prod]},
-      pool_size: 15
+      # ssl: true,
+      url: database_url,
+      pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10")
     """
   end
 
@@ -169,8 +199,9 @@ defmodule Phx.New.Generator do
     |> hd()
     |> Module.concat(PubSub)
   end
+
   defp get_ecto_adapter("mysql", app, module) do
-    {:mariaex, Ecto.Adapters.MySQL, db_config(app, module, "root", "")}
+    {:myxql, Ecto.Adapters.MyXQL, db_config(app, module, "root", "")}
   end
   defp get_ecto_adapter("postgres", app, module) do
     {:postgrex, Ecto.Adapters.Postgres, db_config(app, module, "postgres", "postgres")}
@@ -180,10 +211,10 @@ defmodule Phx.New.Generator do
   end
 
   defp db_config(app, module, user, pass) do
-    [dev:  [username: user, password: pass, database: "#{app}_dev", hostname: "localhost"],
+    [dev:  [username: user, password: pass, database: "#{app}_dev", hostname: "localhost",
+            show_sensitive_data_on_connection_error: true],
      test: [username: user, password: pass, database: "#{app}_test", hostname: "localhost",
             pool: Ecto.Adapters.SQL.Sandbox],
-     prod: [username: user, password: pass, database: "#{app}_prod"],
      test_setup_all: "Ecto.Adapters.SQL.Sandbox.mode(#{inspect module}.Repo, :manual)",
      test_setup: ":ok = Ecto.Adapters.SQL.Sandbox.checkout(#{inspect module}.Repo)",
      test_async: "Ecto.Adapters.SQL.Sandbox.mode(#{inspect module}.Repo, {:shared, self()})"]
@@ -195,15 +226,14 @@ defmodule Phx.New.Generator do
     end)
   end
 
-  defp generators(adapter_config) do
+  defp adapter_generators(adapter_config) do
     adapter_config
     |> Keyword.take([:binary_id, :migration, :sample_binary_id])
     |> Enum.filter(fn {_, value} -> not is_nil(value) end)
-    |> case do
-      [] -> nil
-      conf -> conf
-    end
   end
+
+  defp nil_if_empty([]), do: nil
+  defp nil_if_empty(other), do: other
 
   defp phoenix_path(%Project{} = project, true) do
     absolute = Path.expand(project.project_path)
@@ -226,21 +256,21 @@ defmodule Phx.New.Generator do
   defp phoenix_path_prefix(%Project{in_umbrella?: true}), do: "../../../"
   defp phoenix_path_prefix(%Project{in_umbrella?: false}), do: ".."
 
-  defp phoenix_brunch_path(%Project{in_umbrella?: true}, true = _dev),
+  defp phoenix_webpack_path(%Project{in_umbrella?: true}, true = _dev),
     do: "../../../../../"
-  defp phoenix_brunch_path(%Project{in_umbrella?: true}, false = _dev),
+  defp phoenix_webpack_path(%Project{in_umbrella?: true}, false = _dev),
     do: "../../../deps/phoenix"
-  defp phoenix_brunch_path(%Project{in_umbrella?: false}, true = _dev),
+  defp phoenix_webpack_path(%Project{in_umbrella?: false}, true = _dev),
     do: "../../../"
-  defp phoenix_brunch_path(%Project{in_umbrella?: false}, false = _dev),
+  defp phoenix_webpack_path(%Project{in_umbrella?: false}, false = _dev),
     do: "../deps/phoenix"
 
-  defp phoenix_html_brunch_path(%Project{in_umbrella?: true}),
+  defp phoenix_html_webpack_path(%Project{in_umbrella?: true}),
     do: "../../../deps/phoenix_html"
-  defp phoenix_html_brunch_path(%Project{in_umbrella?: false}),
+  defp phoenix_html_webpack_path(%Project{in_umbrella?: false}),
     do: "../deps/phoenix_html"
 
-  defp phoenix_dep("deps/phoenix"), do: ~s[{:phoenix, "~> 1.3.0-rc"}]
+  defp phoenix_dep("deps/phoenix"), do: ~s[{:phoenix, "~> #{@phoenix_version}"}]
   # defp phoenix_dep("deps/phoenix"), do: ~s[{:phoenix, github: "phoenixframework/phoenix", override: true}]
   defp phoenix_dep(path), do: ~s[{:phoenix, path: #{inspect path}, override: true}]
 

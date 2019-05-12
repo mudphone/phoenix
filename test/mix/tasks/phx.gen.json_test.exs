@@ -36,39 +36,72 @@ defmodule Mix.Tasks.Phx.Gen.JsonTest do
 
   test "generates json resource", config do
     in_tmp_project config.test, fn ->
-      Gen.Json.run(["Blog", "Post", "posts", "title:string"])
+     Gen.Json.run(~w(Blog Post posts title slug:unique votes:integer cost:decimal
+                     tags:array:text popular:boolean drafted_at:datetime
+                     params:map
+                     published_at:utc_datetime
+                     published_at_usec:utc_datetime_usec
+                     deleted_at:naive_datetime
+                     deleted_at_usec:naive_datetime_usec
+                     alarm:time
+                     alarm_usec:time_usec
+                     secret:uuid announcement_date:date
+                     weight:float user_id:references:users))
 
       assert_file "lib/phoenix/blog/post.ex"
-      assert_file "lib/phoenix/blog/blog.ex"
+      assert_file "lib/phoenix/blog.ex"
 
-      assert_file "test/phoenix/blog/blog_test.exs", fn file ->
+      assert_file "test/phoenix/blog_test.exs", fn file ->
         assert file =~ "use Phoenix.DataCase"
       end
 
-      assert_file "test/phoenix/web/controllers/post_controller_test.exs", fn file ->
-        assert file =~ "defmodule Phoenix.Web.PostControllerTest"
+      assert_file "test/phoenix_web/controllers/post_controller_test.exs", fn file ->
+        assert file =~ "defmodule PhoenixWeb.PostControllerTest"
+        assert file =~ """
+
+              assert %{
+                       "id" => id,
+                       "alarm" => "14:00:00",
+                       "alarm_usec" => "14:00:00.000000",
+                       "announcement_date" => "2010-04-17",
+                       "cost" => "120.5",
+                       "deleted_at" => "2010-04-17T14:00:00",
+                       "deleted_at_usec" => "2010-04-17T14:00:00.000000",
+                       "drafted_at" => "2010-04-17T14:00:00",
+                       "params" => %{},
+                       "popular" => true,
+                       "published_at" => "2010-04-17T14:00:00Z",
+                       "published_at_usec" => "2010-04-17T14:00:00.000000Z",
+                       "secret" => "7488a646-e31f-11e4-aace-600308960662",
+                       "slug" => "some slug",
+                       "tags" => [],
+                       "title" => "some title",
+                       "votes" => 42,
+                       "weight" => 120.5
+                     } = json_response(conn, 200)["data"]
+        """
       end
 
       assert [_] = Path.wildcard("priv/repo/migrations/*_create_posts.exs")
 
-      assert_file "lib/phoenix/web/controllers/fallback_controller.ex", fn file ->
-        assert file =~ "defmodule Phoenix.Web.FallbackController"
+      assert_file "lib/phoenix_web/controllers/fallback_controller.ex", fn file ->
+        assert file =~ "defmodule PhoenixWeb.FallbackController"
       end
 
-      assert_file "lib/phoenix/web/controllers/post_controller.ex", fn file ->
-        assert file =~ "defmodule Phoenix.Web.PostController"
-        assert file =~ "use Phoenix.Web, :controller"
+      assert_file "lib/phoenix_web/controllers/post_controller.ex", fn file ->
+        assert file =~ "defmodule PhoenixWeb.PostController"
+        assert file =~ "use PhoenixWeb, :controller"
         assert file =~ "Blog.get_post!"
         assert file =~ "Blog.list_posts"
         assert file =~ "Blog.create_post"
         assert file =~ "Blog.update_post"
         assert file =~ "Blog.delete_post"
-        assert file =~ " post_path(conn"
+        assert file =~ " Routes.post_path(conn"
       end
 
       assert_receive {:mix_shell, :info, ["""
 
-      Add the resource to your :api scope in lib/phoenix/web/router.ex:
+      Add the resource to your :api scope in lib/phoenix_web/router.ex:
 
           resources "/posts", PostController, except: [:new, :edit]
       """]}
@@ -79,26 +112,26 @@ defmodule Mix.Tasks.Phx.Gen.JsonTest do
     in_tmp_project config.test, fn ->
       Gen.Json.run(~w(Blog Post posts title:string --web Blog))
 
-      assert_file "test/phoenix/web/controllers/blog/post_controller_test.exs", fn file ->
-        assert file =~ "defmodule Phoenix.Web.Blog.PostControllerTest"
-        assert file =~ " blog_post_path(conn"
+      assert_file "test/phoenix_web/controllers/blog/post_controller_test.exs", fn file ->
+        assert file =~ "defmodule PhoenixWeb.Blog.PostControllerTest"
+        assert file =~ " Routes.blog_post_path(conn"
       end
 
-      assert_file "lib/phoenix/web/controllers/blog/post_controller.ex", fn file ->
-        assert file =~ "defmodule Phoenix.Web.Blog.PostController"
-        assert file =~ "use Phoenix.Web, :controller"
-        assert file =~ " blog_post_path(conn"
+      assert_file "lib/phoenix_web/controllers/blog/post_controller.ex", fn file ->
+        assert file =~ "defmodule PhoenixWeb.Blog.PostController"
+        assert file =~ "use PhoenixWeb, :controller"
+        assert file =~ " Routes.blog_post_path(conn"
       end
 
-      assert_file "lib/phoenix/web/views/blog/post_view.ex", fn file ->
-        assert file =~ "defmodule Phoenix.Web.Blog.PostView"
+      assert_file "lib/phoenix_web/views/blog/post_view.ex", fn file ->
+        assert file =~ "defmodule PhoenixWeb.Blog.PostView"
       end
 
       assert_receive {:mix_shell, :info, ["""
 
-      Add the resource to your Blog :api scope in lib/phoenix/web/router.ex:
+      Add the resource to your Blog :api scope in lib/phoenix_web/router.ex:
 
-          scope "/blog", Phoenix.Web.Blog do
+          scope "/blog", PhoenixWeb.Blog do
             pipe_through :api
             ...
             resources "/posts", PostController
@@ -111,21 +144,21 @@ defmodule Mix.Tasks.Phx.Gen.JsonTest do
     in_tmp_project config.test, fn ->
       Gen.Json.run(~w(Blog Comment comments title:string --no-context))
 
-      refute_file "lib/phoenix/blog/blog.ex"
+      refute_file "lib/phoenix/blog.ex"
       refute_file "lib/phoenix/blog/comment.ex"
       assert Path.wildcard("priv/repo/migrations/*.exs") == []
 
-      assert_file "test/phoenix/web/controllers/comment_controller_test.exs", fn file ->
-        assert file =~ "defmodule Phoenix.Web.CommentControllerTest"
+      assert_file "test/phoenix_web/controllers/comment_controller_test.exs", fn file ->
+        assert file =~ "defmodule PhoenixWeb.CommentControllerTest"
       end
 
-      assert_file "lib/phoenix/web/controllers/comment_controller.ex", fn file ->
-        assert file =~ "defmodule Phoenix.Web.CommentController"
-        assert file =~ "use Phoenix.Web, :controller"
+      assert_file "lib/phoenix_web/controllers/comment_controller.ex", fn file ->
+        assert file =~ "defmodule PhoenixWeb.CommentController"
+        assert file =~ "use PhoenixWeb, :controller"
       end
 
-      assert_file "lib/phoenix/web/views/comment_view.ex", fn file ->
-        assert file =~ "defmodule Phoenix.Web.CommentView"
+      assert_file "lib/phoenix_web/views/comment_view.ex", fn file ->
+        assert file =~ "defmodule PhoenixWeb.CommentView"
       end
     end
   end
@@ -134,21 +167,21 @@ defmodule Mix.Tasks.Phx.Gen.JsonTest do
     in_tmp_project config.test, fn ->
       Gen.Json.run(~w(Blog Comment comments title:string --no-schema))
 
-      assert_file "lib/phoenix/blog/blog.ex"
+      assert_file "lib/phoenix/blog.ex"
       refute_file "lib/phoenix/blog/comment.ex"
       assert Path.wildcard("priv/repo/migrations/*.exs") == []
 
-      assert_file "test/phoenix/web/controllers/comment_controller_test.exs", fn file ->
-        assert file =~ "defmodule Phoenix.Web.CommentControllerTest"
+      assert_file "test/phoenix_web/controllers/comment_controller_test.exs", fn file ->
+        assert file =~ "defmodule PhoenixWeb.CommentControllerTest"
       end
 
-      assert_file "lib/phoenix/web/controllers/comment_controller.ex", fn file ->
-        assert file =~ "defmodule Phoenix.Web.CommentController"
-        assert file =~ "use Phoenix.Web, :controller"
+      assert_file "lib/phoenix_web/controllers/comment_controller.ex", fn file ->
+        assert file =~ "defmodule PhoenixWeb.CommentController"
+        assert file =~ "use PhoenixWeb, :controller"
       end
 
-      assert_file "lib/phoenix/web/views/comment_view.ex", fn file ->
-        assert file =~ "defmodule Phoenix.Web.CommentView"
+      assert_file "lib/phoenix_web/views/comment_view.ex", fn file ->
+        assert file =~ "defmodule PhoenixWeb.CommentView"
       end
     end
   end
@@ -158,20 +191,20 @@ defmodule Mix.Tasks.Phx.Gen.JsonTest do
       in_tmp_umbrella_project config.test, fn ->
         Gen.Json.run(~w(Accounts User users name:string))
 
-        assert_file "lib/phoenix/accounts/accounts.ex"
+        assert_file "lib/phoenix/accounts.ex"
         assert_file "lib/phoenix/accounts/user.ex"
 
-        assert_file "lib/phoenix/web/controllers/user_controller.ex", fn file ->
-          assert file =~ "defmodule Phoenix.Web.UserController"
-          assert file =~ "use Phoenix.Web, :controller"
+        assert_file "lib/phoenix_web/controllers/user_controller.ex", fn file ->
+          assert file =~ "defmodule PhoenixWeb.UserController"
+          assert file =~ "use PhoenixWeb, :controller"
         end
 
-        assert_file "lib/phoenix/web/views/user_view.ex", fn file ->
-          assert file =~ "defmodule Phoenix.Web.UserView"
+        assert_file "lib/phoenix_web/views/user_view.ex", fn file ->
+          assert file =~ "defmodule PhoenixWeb.UserView"
         end
 
-        assert_file "test/phoenix/web/controllers/user_controller_test.exs", fn file ->
-          assert file =~ "defmodule Phoenix.Web.UserControllerTest"
+        assert_file "test/phoenix_web/controllers/user_controller_test.exs", fn file ->
+          assert file =~ "defmodule PhoenixWeb.UserControllerTest"
         end
       end
     end
@@ -192,20 +225,20 @@ defmodule Mix.Tasks.Phx.Gen.JsonTest do
 
         Gen.Json.run(~w(Accounts User users name:string))
 
-        assert_file "another_app/lib/another_app/accounts/accounts.ex"
+        assert_file "another_app/lib/another_app/accounts.ex"
         assert_file "another_app/lib/another_app/accounts/user.ex"
 
         assert_file "lib/phoenix/controllers/user_controller.ex", fn file ->
-          assert file =~ "defmodule Phoenix.Web.UserController"
-          assert file =~ "use Phoenix.Web, :controller"
+          assert file =~ "defmodule Phoenix.UserController"
+          assert file =~ "use Phoenix, :controller"
         end
 
         assert_file "lib/phoenix/views/user_view.ex", fn file ->
-          assert file =~ "defmodule Phoenix.Web.UserView"
+          assert file =~ "defmodule Phoenix.UserView"
         end
 
         assert_file "test/phoenix/controllers/user_controller_test.exs", fn file ->
-          assert file =~ "defmodule Phoenix.Web.UserControllerTest"
+          assert file =~ "defmodule Phoenix.UserControllerTest"
         end
       end
     end

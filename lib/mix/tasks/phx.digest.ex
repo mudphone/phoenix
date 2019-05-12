@@ -6,7 +6,7 @@ defmodule Mix.Tasks.Phx.Digest do
   @recursive true
 
   @moduledoc """
-  Digests and compress static files.
+  Digests and compresses static files.
 
       mix phx.digest
       mix phx.digest priv/static -o /www/public
@@ -32,14 +32,16 @@ defmodule Mix.Tasks.Phx.Digest do
     * app-eb0a5b9302e8d32828d8a73f137cc8f0.js
     * app-eb0a5b9302e8d32828d8a73f137cc8f0.js.gz
     * cache_manifest.json
+
   """
 
   @doc false
-  def run(args) do
-    {opts, args, _} = OptionParser.parse(args, aliases: [o: :output])
-    input_path  = List.first(args) || @default_input_path
+  def run(all_args) do
+    {opts, args, _} = OptionParser.parse(all_args, switches: [output: :string], aliases: [o: :output])
+    input_path = List.first(args) || @default_input_path
     output_path = opts[:output] || input_path
 
+    Mix.Task.run "deps.loadpaths", all_args
     {:ok, _} = Application.ensure_all_started(:phoenix)
 
     case Phoenix.Digester.compile(input_path, output_path) do

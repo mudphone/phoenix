@@ -11,6 +11,7 @@ defmodule Phoenix.Endpoint.EndpointTest do
            cache_static_manifest: "../../../../test/fixtures/cache_manifest.json",
            pubsub: [adapter: Phoenix.PubSub.PG2, name: :endpoint_pub]]
   Application.put_env(:phoenix, __MODULE__.Endpoint, @config)
+  Application.put_env(:phoenix, __MODULE__.NoPubSubNameEndpoint, [])
 
   defmodule Endpoint do
     use Phoenix.Endpoint, otp_app: :phoenix
@@ -21,18 +22,55 @@ defmodule Phoenix.Endpoint.EndpointTest do
     assert code_reloading? == false
   end
 
+  defmodule NoPubSubNameEndpoint do
+    use Phoenix.Endpoint, otp_app: :phoenix
+
+    def init(_, config) do
+      pubsub = [adapter: Phoenix.PubSub.PG2]
+      {:ok, Keyword.put(config, :pubsub, pubsub)}
+    end
+  end
+
+  defmodule NoConfigEndpoint do
+    use Phoenix.Endpoint, otp_app: :phoenix
+  end
+
   setup_all do
-    Endpoint.start_link()
+    ExUnit.CaptureLog.capture_log(fn ->
+      Endpoint.start_link()
+    end)
     on_exit fn -> Application.delete_env(:phoenix, :serve_endpoints) end
     :ok
+  end
+
+  test "defines child_spec/1" do
+    assert Endpoint.child_spec([]) == %{
+      id: Endpoint,
+      start: {Endpoint, :start_link, [[]]},
+      type: :supervisor
+    }
+  end
+
+  @tag :capture_log
+  test "errors if pubsub adapter is set but not a name" do
+    Process.flag(:trap_exit, true)
+    {:error, {%ArgumentError{message: message}, _}} = NoPubSubNameEndpoint.start_link()
+    assert message =~ "an adapter was given to :pubsub but no :name"
+  end
+
+  test "warns if there is no configuration for an endpoint" do
+    assert ExUnit.CaptureLog.capture_log(fn ->
+      NoConfigEndpoint.start_link()
+    end) =~ "no configuration"
   end
 
   test "has reloadable configuration" do
     assert Endpoint.config(:url) == [host: {:system, "ENDPOINT_TEST_HOST"}, path: "/api"]
     assert Endpoint.config(:static_url) == [host: "static.example.com"]
     assert Endpoint.url == "https://example.com"
+    assert Endpoint.path("/") == "/api/"
     assert Endpoint.static_url == "https://static.example.com"
-    assert Endpoint.struct_url == %URI{scheme: "https", host: "example.com", port: 443, path: "/api"}
+    assert Endpoint.struct_url == %URI{scheme: "https", host: "example.com", port: 443}
 
     config =
       @config
@@ -45,18 +83,20 @@ defmodule Phoenix.Endpoint.EndpointTest do
     assert Enum.sort(Endpoint.config(:static_url)) ==
            [host: "static.example.com", port: 456]
     assert Endpoint.url == "https://example.com:1234"
+    assert Endpoint.path("/") == "/api/"
     assert Endpoint.static_url == "https://static.example.com:456"
-    assert Endpoint.struct_url == %URI{scheme: "https", host: "example.com", port: 1234, path: "/api"}
+    assert Endpoint.struct_url == %URI{scheme: "https", host: "example.com", port: 1234}
   end
 
   test "sets script name when using path" do
-    conn = conn(:get, "/")
+    conn = conn(:get, "https://example.com/")
     assert Endpoint.call(conn, []).script_name == ~w"api"
 
     conn = put_in conn.script_name, ~w(foo)
     assert Endpoint.call(conn, []).script_name == ~w"api"
   end
 
+  @tag :capture_log
   test "redirects http requests to https on force_ssl" do
     conn = Endpoint.call(conn(:get, "/"), [])
     assert get_resp_header(conn, "location") == ["https://example.com/"]
@@ -79,12 +119,7 @@ defmodule Phoenix.Endpoint.EndpointTest do
     assert Endpoint.static_path("/foo.css") == "/foo-ghijkl.css?vsn=d"
   end
 
-  test "warms up cache from previous manifest format" do
-    config = put_in(@config, [:cache_static_manifest], "../../../../test/fixtures/old_cache_manifest.json")
-    assert Endpoint.config_change([{Endpoint, config}], []) == :ok
-    assert Endpoint.static_path("/foo.css") == "/foo-d978852bea6530fcd197b5445ed008fd.css?vsn=d"
-  end
-
+  @tag :capture_log
   test "invokes init/2 callback" do
     Application.put_env(:phoenix, __MODULE__.InitEndpoint, parent: self())
 
@@ -97,26 +132,28 @@ defmodule Phoenix.Endpoint.EndpointTest do
       end
     end
 
-    {:ok, pid} = InitEndpoint.start_link
+    {:ok, pid} = InitEndpoint.start_link()
     assert_receive {^pid, :sample}
   end
 
+  @tag :capture_log
   test "uses url configuration for static path" do
     Application.put_env(:phoenix, __MODULE__.UrlEndpoint, url: [path: "/api"])
     defmodule UrlEndpoint do
       use Phoenix.Endpoint, otp_app: :phoenix
     end
-    UrlEndpoint.start_link
+    UrlEndpoint.start_link()
     assert UrlEndpoint.path("/phoenix.png") =~ "/api/phoenix.png"
     assert UrlEndpoint.static_path("/phoenix.png") =~ "/api/phoenix.png"
   end
 
+  @tag :capture_log
   test "uses static_url configuration for static path" do
     Application.put_env(:phoenix, __MODULE__.StaticEndpoint, static_url: [path: "/static"])
     defmodule StaticEndpoint do
       use Phoenix.Endpoint, otp_app: :phoenix
     end
-    StaticEndpoint.start_link
+    StaticEndpoint.start_link()
     assert StaticEndpoint.path("/phoenix.png") =~ "/phoenix.png"
     assert StaticEndpoint.static_path("/phoenix.png") =~ "/static/phoenix.png"
   end
@@ -167,5 +204,31 @@ defmodule Phoenix.Endpoint.EndpointTest do
     endpoint = Module.concat(__MODULE__, config.test)
     Application.put_env(:phoenix, endpoint, [])
     refute Phoenix.Endpoint.server?(:phoenix, endpoint)
+  end
+
+  test "static_path/1 validates paths are local/safe" do
+    safe_path = "/some_safe_path"
+    assert Endpoint.static_path(safe_path) == safe_path
+
+    assert_raise ArgumentError, ~r/unsafe characters/, fn ->
+      Endpoint.static_path("/\\unsafe_path")
+    end
+
+    assert_raise ArgumentError, ~r/expected a path starting with a single/, fn ->
+      Endpoint.static_path("//invalid_path")
+    end
+  end
+
+  test "static_integrity/1 validates paths are local/safe" do
+    safe_path = "/some_safe_path"
+    assert is_nil(Endpoint.static_integrity(safe_path))
+
+    assert_raise ArgumentError, ~r/unsafe characters/, fn ->
+      Endpoint.static_integrity("/\\unsafe_path")
+    end
+
+    assert_raise ArgumentError, ~r/expected a path starting with a single/, fn ->
+      Endpoint.static_integrity("//invalid_path")
+    end
   end
 end

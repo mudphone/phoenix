@@ -15,28 +15,6 @@ defmodule Phoenix.DigesterTest do
       assert {:error, :invalid_path} = Phoenix.Digester.compile("nonexistent path", "/ ?? /path")
     end
 
-    test "upgrade old cache manifest" do
-      source_path = "test/fixtures/digest/priv/static/"
-      input_path = "tmp/digest/static"
-      File.rm_rf!(input_path)
-      :ok = File.mkdir_p!(@output_path)
-      :ok = File.mkdir_p!(input_path)
-      :ok = File.cp(Path.join(source_path, "foo.css"), Path.join(@output_path, "foo-d978852bea6530fcd197b5445ed008fd.css"))
-      :ok = File.cp("test/fixtures/old_cache_manifest.json", Path.join(@output_path, "cache_manifest.json"))
-      File.write!(Path.join(input_path, "foo.css"), ".foo { background-color: blue }")
-
-      assert :ok = Phoenix.Digester.compile(input_path, @output_path)
-
-      json =
-        Path.join(@output_path, "cache_manifest.json")
-        |> File.read!()
-        |> Poison.decode!()
-
-      assert_in_delta json["digests"]["foo-d978852bea6530fcd197b5445ed008fd.css"]["mtime"], now(), 2
-      assert_in_delta json["digests"]["foo-1198fd3c7ecf0e8f4a33a6e4fc5ae168.css"]["mtime"], now(), 2
-      assert json["latest"]["foo.css"] == "foo-1198fd3c7ecf0e8f4a33a6e4fc5ae168.css"
-    end
-
     test "digests and compress files" do
       input_path = "test/fixtures/digest/priv/static/"
       assert :ok = Phoenix.Digester.compile(input_path, @output_path)
@@ -57,7 +35,7 @@ defmodule Phoenix.DigesterTest do
       json =
         Path.join(@output_path, "cache_manifest.json")
         |> File.read!()
-        |> Poison.decode!()
+        |> Phoenix.json_library().decode!()
 
       assert json["latest"]["phoenix.png"] =~ ~r"phoenix-#{@hash_regex}.png"
       assert json["version"] == 1
@@ -78,7 +56,7 @@ defmodule Phoenix.DigesterTest do
       json =
         Path.join(@output_path, "cache_manifest.json")
         |> File.read!()
-        |> Poison.decode!()
+        |> Phoenix.json_library().decode!()
 
       # Keep old entries
       assert json["digests"]["foo-d978852bea6530fcd197b5445ed008fd.css"]["logical_path"] == "foo.css"
@@ -91,6 +69,7 @@ defmodule Phoenix.DigesterTest do
       assert is_integer(json["digests"][key]["mtime"])
       assert json["digests"][key]["size"] == 13900
       assert json["digests"][key]["digest"] =~ ~r"#{@hash_regex}"
+      assert json["digests"][key]["sha512"] == "93pY5dBa8nHHi0Zfj75O/vXCBXb+UvEVCyU7Yd3pzOJ7o1wkYBWbvs3pVXhBChEmo8MDANT11vsggo2+bnYqoQ=="
       assert json["version"] == 1
     end
 
@@ -109,7 +88,7 @@ defmodule Phoenix.DigesterTest do
       json =
         Path.join(@output_path, "cache_manifest.json")
         |> File.read!()
-        |> Poison.decode!()
+        |> Phoenix.json_library().decode!()
 
       assert json["digests"]["foo-d978852bea6530fcd197b5445ed008fd.css"]["mtime"] == 32132171
       assert_in_delta json["digests"]["foo-1198fd3c7ecf0e8f4a33a6e4fc5ae168.css"]["mtime"], now(), 2
@@ -126,7 +105,7 @@ defmodule Phoenix.DigesterTest do
       json =
         Path.join(input_path, "cache_manifest.json")
         |> File.read!()
-        |> Poison.decode!()
+        |> Phoenix.json_library().decode!()
 
       assert json["digests"] == %{}
     end
@@ -146,7 +125,7 @@ defmodule Phoenix.DigesterTest do
       json =
         Path.join(@output_path, "cache_manifest.json")
         |> File.read!()
-        |> Poison.decode!()
+        |> Phoenix.json_library().decode!()
       assert json["latest"]["static/phoenix.png"] =~ ~r"static/phoenix-#{@hash_regex}\.png"
     end
 
@@ -167,7 +146,7 @@ defmodule Phoenix.DigesterTest do
       json =
         Path.join(@output_path, "cache_manifest.json")
         |> File.read!()
-        |> Poison.decode!()
+        |> Phoenix.json_library().decode!()
 
       assert Enum.count(json["digests"]) == 2
     end
@@ -209,6 +188,34 @@ defmodule Phoenix.DigesterTest do
 
       refute digested_css =~ ~r"http://www.phoenixframework.org/absolute-#{@hash_regex}.png"
       assert digested_css =~ ~r"http://www.phoenixframework.org/absolute.png"
+    end
+
+    test "sha512 matches content of digested file" do
+      input_path = "test/fixtures/digest/priv/static/"
+      assert :ok = Phoenix.Digester.compile(input_path, @output_path)
+
+      digested_css_filename =
+        assets_files(@output_path)
+        |> Enum.find(&(&1 =~ ~r"app-#{@hash_regex}.css"))
+
+      digested_css =
+        Path.join(@output_path, digested_css_filename)
+        |> File.read!()
+
+      cache_manifest_file =
+        @output_path
+        |> assets_files()
+        |> Enum.find(&(&1 =~ ~r"cache_manifest.json"))
+
+      json =
+        @output_path
+        |> Path.join(cache_manifest_file)
+        |> File.read!()
+        |> Phoenix.json_library().decode!()
+
+      integrity = Base.encode64(:crypto.hash(:sha512, digested_css))
+
+      assert json["digests"][digested_css_filename]["sha512"] == integrity
     end
 
     test "digests sourceMappingURL asset paths found within javascript source files" do
@@ -378,7 +385,7 @@ defmodule Phoenix.DigesterTest do
       json =
         Path.join(@output_path, "cache_manifest.json")
         |> File.read!()
-        |> Poison.decode!()
+        |> Phoenix.json_library().decode!()
 
       refute json["digests"]["app-1.css"]
     end

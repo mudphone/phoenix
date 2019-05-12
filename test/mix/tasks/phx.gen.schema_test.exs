@@ -30,6 +30,30 @@ defmodule Mix.Tasks.Phx.Gen.SchemaTest do
         human_singular: "Post",
         attrs: [title: :string],
         types: %{title: :string},
+        route_helper: "post",
+        defaults: %{title: ""},
+      } = schema
+      assert String.ends_with?(schema.file, "lib/phoenix/blog/post.ex")
+    end
+  end
+
+  test "build with nested web namespace", config do
+    in_tmp_project config.test, fn ->
+      schema = Gen.Schema.build(~w(Blog.Post posts title:string --web API.V1), [])
+
+      assert %Schema{
+        alias: Post,
+        module: Phoenix.Blog.Post,
+        repo: Phoenix.Repo,
+        migration?: true,
+        migration_defaults: %{title: ""},
+        plural: "posts",
+        singular: "post",
+        human_plural: "Posts",
+        human_singular: "Post",
+        attrs: [title: :string],
+        types: %{title: :string},
+        route_helper: "api_v1_post",
         defaults: %{title: ""},
       } = schema
       assert String.ends_with?(schema.file, "lib/phoenix/blog/post.ex")
@@ -180,11 +204,12 @@ defmodule Mix.Tasks.Phx.Gen.SchemaTest do
 
   test "generates schema with proper datetime types", config do
     in_tmp_project config.test, fn ->
-      Gen.Schema.run(~w(Blog.Comment comments title:string drafted_at:datetime published_at:naive_datetime edited_at:utc_datetime))
+      Gen.Schema.run(~w(Blog.Comment comments title:string drafted_at:datetime published_at:naive_datetime edited_at:utc_datetime locked_at:naive_datetime_usec))
 
       assert_file "lib/phoenix/blog/comment.ex", fn file ->
         assert file =~ "field :drafted_at, :naive_datetime"
         assert file =~ "field :published_at, :naive_datetime"
+        assert file =~ "field :locked_at, :naive_datetime_usec"
         assert file =~ "field :edited_at, :utc_datetime"
       end
 
@@ -241,6 +266,69 @@ defmodule Mix.Tasks.Phx.Gen.SchemaTest do
           assert file =~ "create table(:posts, primary_key: false) do"
           assert file =~ "add :id, :binary_id, primary_key: true"
         end
+      end
+    end
+  end
+
+  test "generates migrations with a custom migration module", config do
+    in_tmp_project config.test, fn ->
+      try do
+        Application.put_env(:ecto_sql, :migration_module, MyCustomApp.MigrationModule)
+  
+        Gen.Schema.run(~w(Blog.Post posts))        
+  
+        assert [migration] = Path.wildcard("priv/repo/migrations/*_create_posts.exs")
+  
+        assert_file migration, fn file ->
+          assert file =~ "use MyCustomApp.MigrationModule"
+          assert file =~ "create table(:posts) do"
+        end
+      after
+        Application.delete_env(:ecto_sql, :migration_module)
+      end
+    end
+  end
+
+  test "generates schema without extra line break", config do
+    in_tmp_project config.test, fn ->
+      Gen.Schema.run(~w(Blog.Post posts title))
+
+      assert_file "lib/phoenix/blog/post.ex", fn file ->
+        assert file =~ "import Ecto.Changeset\n\n  schema"
+      end
+    end
+  end
+
+  describe "inside umbrella" do
+    test "raises with false context_app", config do
+      in_tmp_umbrella_project config.test, fn ->
+        Application.put_env(:phoenix, :generators, context_app: false)
+
+        assert_raise Mix.Error, ~r/no context_app configured/, fn ->
+          Gen.Schema.run(~w(Blog.Post blog_posts title:string))
+        end
+      end
+    end
+
+    test "with context_app set to nil", config do
+      in_tmp_umbrella_project config.test, fn ->
+        Application.put_env(:phoenix, :generators, context_app: nil)
+
+        Gen.Schema.run(~w(Blog.Post blog_posts title:string))
+
+        assert_file "lib/phoenix/blog/post.ex"
+        assert [_] = Path.wildcard("priv/repo/migrations/*_create_blog_posts.exs")
+      end
+    end
+
+    test "with context_app", config do
+      in_tmp_umbrella_project config.test, fn ->
+        Application.put_env(:phoenix, :generators, context_app: {:another_app, "another_app"})
+
+        Gen.Schema.run(~w(Blog.Post blog_posts title:string))
+
+        assert_file "another_app/lib/another_app/blog/post.ex"
+        assert [_] = Path.wildcard("another_app/priv/repo/migrations/*_create_blog_posts.exs")
       end
     end
   end

@@ -6,6 +6,7 @@ defmodule Phx.New.Project do
             app: nil,
             app_mod: nil,
             app_path: nil,
+            lib_web_name: nil,
             root_app: nil,
             root_mod: nil,
             project_path: nil,
@@ -14,8 +15,8 @@ defmodule Phx.New.Project do
             web_path: nil,
             opts: :unset,
             in_umbrella?: false,
-            web_applications: [],
-            binding: []
+            binding: [],
+            generators: []
 
   def new(project_path, opts) do
     project_path = Path.expand(project_path)
@@ -38,8 +39,12 @@ defmodule Phx.New.Project do
     Keyword.fetch!(binding, :html)
   end
 
-  def brunch?(%Project{binding: binding}) do
-    Keyword.fetch!(binding, :brunch)
+  def webpack?(%Project{binding: binding}) do
+    Keyword.fetch!(binding, :webpack)
+  end
+
+  def verbose?(%Project{opts: opts}) do
+    Keyword.get(opts, :verbose, false)
   end
 
   def join_path(%Project{} = project, location, path)
@@ -50,6 +55,7 @@ defmodule Phx.New.Project do
     |> Path.join(path)
     |> expand_path_with_bindings(project)
   end
+
   defp expand_path_with_bindings(path, %Project{} = project) do
     Regex.replace(Mix.Tasks.Phx.New.recompile(~r/:[a-zA-Z0-9_]+/), path, fn ":" <> key, _ ->
         project |> Map.fetch!(:"#{key}") |> to_string()

@@ -5,7 +5,7 @@ defmodule <%= web_namespace %>.ConnCase do
 
   Such tests rely on `Phoenix.ConnTest` and also
   import other functionality to make it easier
-  to build common datastructures and query the data layer.
+  to build common data structures and query the data layer.
 
   Finally, if the test case interacts with the database,
   it cannot be async. For this reason, every test runs
@@ -19,24 +19,24 @@ defmodule <%= web_namespace %>.ConnCase do
     quote do
       # Import conveniences for testing with connections
       use Phoenix.ConnTest
-      import <%= web_namespace %>.Router.Helpers
+      alias <%= web_namespace %>.Router.Helpers, as: Routes
 
       # The default endpoint for testing
       @endpoint <%= endpoint_module %>
     end
-  end
+  end<%= if ecto do %>
 
-<%= if ecto do %>
   setup tags do
     <%= adapter_config[:test_setup] %>
+
     unless tags[:async] do
       <%= adapter_config[:test_async] %>
     end
+
     {:ok, conn: Phoenix.ConnTest.build_conn()}
-  end
-<% else %>
+  end<% else %>
+
   setup _tags do
     {:ok, conn: Phoenix.ConnTest.build_conn()}
-  end
-<% end %>
+  end<% end %>
 end

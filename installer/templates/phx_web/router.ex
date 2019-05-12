@@ -14,7 +14,7 @@ defmodule <%= web_namespace %>.Router do
   end<%= if html do %>
 
   scope "/", <%= web_namespace %> do
-    pipe_through :browser # Use the default browser stack
+    pipe_through :browser
 
     get "/", PageController, :index
   end

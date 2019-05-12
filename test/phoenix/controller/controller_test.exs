@@ -41,6 +41,11 @@ defmodule Phoenix.Controller.ControllerTest do
     assert view_template(%Conn{}) == nil
   end
 
+  test "status_message_from_template/1" do
+    assert status_message_from_template("404.html") == "Not Found"
+    assert status_message_from_template("whatever.html") == "Internal Server Error"
+  end
+
   test "put_layout_formats/2 and layout_formats/1" do
     conn = conn(:get, "/")
     assert layout_formats(conn) == ~w(html)
@@ -397,6 +402,17 @@ defmodule Phoenix.Controller.ControllerTest do
              "world"
     end
 
+    test "sends file for download with custom :filename and :encode false" do
+      conn = send_download(conn(:get, "/"), {:file, @hello_txt}, filename: "dev's hello world.json", encode: false)
+      assert conn.status == 200
+      assert get_resp_header(conn, "content-disposition") ==
+             ["attachment; filename=\"dev's hello world.json\""]
+      assert get_resp_header(conn, "content-type") ==
+             ["application/json"]
+      assert conn.resp_body ==
+             "world"
+    end
+
     test "sends file for download with custom :content_type and :charset" do
       conn = send_download(conn(:get, "/"), {:file, @hello_txt}, content_type: "application/json", charset: "utf8")
       assert conn.status == 200
@@ -406,6 +422,29 @@ defmodule Phoenix.Controller.ControllerTest do
              ["application/json; charset=utf8"]
       assert conn.resp_body ==
              "world"
+    end
+
+    test "sends file for download with custom :disposition" do
+      conn = send_download(conn(:get, "/"), {:file, @hello_txt}, disposition: :inline)
+      assert conn.status == 200
+      assert get_resp_header(conn, "content-disposition") ==
+             ["inline; filename=\"hello.txt\""]
+      assert conn.resp_body ==
+             "world"
+    end
+
+    test "sends file for download with custom :offset" do
+      conn = send_download(conn(:get, "/"), {:file, @hello_txt}, offset: 2)
+      assert conn.status == 200
+      assert conn.resp_body ==
+             "rld"
+    end
+
+    test "sends file for download with custom :length" do
+      conn = send_download(conn(:get, "/"), {:file, @hello_txt}, length: 2)
+      assert conn.status == 200
+      assert conn.resp_body ==
+             "wo"
     end
 
     test "sends binary for download with :filename" do
@@ -429,6 +468,27 @@ defmodule Phoenix.Controller.ControllerTest do
              ["application/json; charset=utf8"]
       assert conn.resp_body ==
              "world"
+    end
+
+    test "sends binary for download with custom :disposition" do
+      conn = send_download(conn(:get, "/"), {:binary, "world"},
+                           filename: "hello.txt", disposition: :inline)
+      assert conn.status == 200
+      assert get_resp_header(conn, "content-disposition") ==
+             ["inline; filename=\"hello.txt\""]
+      assert conn.resp_body ==
+             "world"
+    end
+
+    test "raises ArgumentError for :disposition other than :attachment or :inline" do
+      assert_raise(ArgumentError, ~r"expected :disposition to be :attachment or :inline, got: :foo", fn ->
+        send_download(conn(:get, "/"), {:file, @hello_txt}, disposition: :foo)
+      end)
+
+      assert_raise(ArgumentError, ~r"expected :disposition to be :attachment or :inline, got: :foo", fn ->
+        send_download(conn(:get, "/"), {:binary, "world"},
+                           filename: "hello.txt", disposition: :foo)
+      end)
     end
   end
 
@@ -506,11 +566,17 @@ defmodule Phoenix.Controller.ControllerTest do
     assert get_resp_header(conn, "x-frame-options") == ["SAMEORIGIN"]
     assert get_resp_header(conn, "x-xss-protection") == ["1; mode=block"]
     assert get_resp_header(conn, "x-content-type-options") == ["nosniff"]
+    assert get_resp_header(conn, "x-download-options") == ["noopen"]
+    assert get_resp_header(conn, "x-permitted-cross-domain-policies") == ["none"]
+    assert get_resp_header(conn, "cross-origin-window-policy") == ["deny"]
 
     custom_headers = %{"x-frame-options" => "custom", "foo" => "bar"}
     conn = conn(:get, "/") |> put_secure_browser_headers(custom_headers)
     assert get_resp_header(conn, "x-frame-options") == ["custom"]
     assert get_resp_header(conn, "x-xss-protection") == ["1; mode=block"]
+    assert get_resp_header(conn, "x-download-options") == ["noopen"]
+    assert get_resp_header(conn, "x-permitted-cross-domain-policies") == ["none"]
+    assert get_resp_header(conn, "cross-origin-window-policy") == ["deny"]
     assert get_resp_header(conn, "foo") == ["bar"]
   end
 
@@ -541,6 +607,7 @@ defmodule Phoenix.Controller.ControllerTest do
       conn(:get, path)
       |> fetch_query_params()
       |> put_private(:phoenix_endpoint, __MODULE__)
+      |> put_private(:phoenix_router, __MODULE__)
     end
 
     test "current_path/1 uses the conn's query params" do

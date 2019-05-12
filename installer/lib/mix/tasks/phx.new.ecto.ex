@@ -2,7 +2,7 @@ defmodule Mix.Tasks.Phx.New.Ecto do
   @moduledoc """
   Creates a new Ecto project within an umbrella project.
 
-  This task is inteded to create a bare Ecto project without
+  This task is intended to create a bare Ecto project without
   web integration, which serves as a core application of your
   domain for web applications and your greater umbrella
   platform to integrate with.
@@ -23,9 +23,13 @@ defmodule Mix.Tasks.Phx.New.Ecto do
     * `--module` - the name of the base module in
       the generated skeleton
 
-    * `--database` - specify the database adapter for ecto.
-      Values can be `postgres`, `mysql`, `mssql`, `sqlite` or
-      `mongodb`. Defaults to `postgres`
+    * `--database` - specify the database adapter for Ecto. One of:
+
+        * `postgres` (https://github.com/elixir-ecto/postgrex)
+        * `mysql` (https://github.com/elixir-ecto/myxql)
+
+      Please check the driver docs, between parentheses, for more information
+      and requirements. Defaults to "postgres".
 
     * `--binary-id` - use `binary_id` as primary key type
       in Ecto schemas
@@ -52,6 +56,6 @@ defmodule Mix.Tasks.Phx.New.Ecto do
       Mix.raise "The ecto task can only be run within an umbrella's apps directory"
     end
 
-    Mix.Tasks.Phx.New.run(args ++ ["--no-brunch", "--ecto"], Phx.New.Ecto)
+    Mix.Tasks.Phx.New.run(args ++ ["--no-webpack", "--ecto"], Phx.New.Ecto, :app_path)
   end
 end

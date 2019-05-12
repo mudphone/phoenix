@@ -12,11 +12,6 @@ defmodule Phoenix.ConfigTest do
     assert config[:parsers] == false
     assert config[:custom]  == true
     assert config[:static]  == true
-
-    assert ExUnit.CaptureIO.capture_io(:stderr, fn ->
-      assert from_env(:unknown_app, meta.test, [static: true]) ==
-            [static: true]
-    end) =~ "no configuration"
   end
 
   test "starts an ets table as part of the module", meta do
@@ -25,9 +20,6 @@ defmodule Phoenix.ConfigTest do
     assert :ets.lookup(meta.test, :parsers) == [parsers: false]
     assert :ets.lookup(meta.test, :static)  == [static: [at: "/"]]
     assert :ets.lookup(meta.test, :custom)  == [custom: true]
-
-    assert stop(meta.test) == :ok
-    assert :ets.info(meta.test, :name) == :undefined
   end
 
   test "can change configuration", meta do

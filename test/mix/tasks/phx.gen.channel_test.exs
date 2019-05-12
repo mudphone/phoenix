@@ -1,6 +1,6 @@
 Code.require_file "../../../installer/test/mix_helper.exs", __DIR__
 
-defmodule Phoenix.Web.DupChannel do
+defmodule PhoenixWeb.DupChannel do
 end
 
 defmodule Mix.Tasks.Phx.Gen.ChannelTest do
@@ -15,11 +15,11 @@ defmodule Mix.Tasks.Phx.Gen.ChannelTest do
 
   test "generates channel" do
     in_tmp_project "generates channel", fn ->
-      Gen.Channel.run ["room"]
+      Gen.Channel.run ["Room"]
 
-      assert_file "lib/phoenix/web/channels/room_channel.ex", fn file ->
-        assert file =~ ~S|defmodule Phoenix.Web.RoomChannel do|
-        assert file =~ ~S|use Phoenix.Web, :channel|
+      assert_file "lib/phoenix_web/channels/room_channel.ex", fn file ->
+        assert file =~ ~S|defmodule PhoenixWeb.RoomChannel do|
+        assert file =~ ~S|use PhoenixWeb, :channel|
         assert file =~ ~S|def join("room:lobby", payload, socket) do|
 
         assert file =~ ~S|def handle_in("ping", payload, socket) do|
@@ -29,12 +29,11 @@ defmodule Mix.Tasks.Phx.Gen.ChannelTest do
         assert file =~ ~S|{:noreply, socket}|
       end
 
-      assert_file "test/phoenix/web/channels/room_channel_test.exs", fn file ->
-        assert file =~ ~S|defmodule Phoenix.Web.RoomChannelTest|
-        assert file =~ ~S|use Phoenix.Web.ChannelCase|
-        assert file =~ ~S|alias Phoenix.Web.RoomChannel|
-
-        assert file =~ ~S|subscribe_and_join(RoomChannel|
+      assert_file "test/phoenix_web/channels/room_channel_test.exs", fn file ->
+        assert file =~ ~S|defmodule PhoenixWeb.RoomChannelTest|
+        assert file =~ ~S|use PhoenixWeb.ChannelCase|
+        assert file =~ ~S|socket(PhoenixWeb.UserSocket, "user_id", %{some: :assign}|
+        assert file =~ ~S|subscribe_and_join(PhoenixWeb.RoomChannel|
 
         assert file =~ ~S|test "ping replies with status ok"|
         assert file =~ ~S|ref = push socket, "ping", %{"hello" => "there"}|
@@ -52,17 +51,17 @@ defmodule Mix.Tasks.Phx.Gen.ChannelTest do
   end
 
   test "in an umbrella with a context_app, generates the files" do
-    in_tmp_umbrella_project "generates presences", fn ->
+    in_tmp_umbrella_project "generates channels", fn ->
       Application.put_env(:phoenix, :generators, context_app: {:another_app, "another_app"})
       Gen.Channel.run ["room"]
       assert_file "lib/phoenix/channels/room_channel.ex", fn file ->
-        assert file =~ ~S|defmodule Phoenix.Web.RoomChannel do|
-        assert file =~ ~S|use Phoenix.Web, :channel|
+        assert file =~ ~S|defmodule PhoenixWeb.RoomChannel do|
+        assert file =~ ~S|use PhoenixWeb, :channel|
       end
 
       assert_file "test/phoenix/channels/room_channel_test.exs", fn file ->
-        assert file =~ ~S|defmodule Phoenix.Web.RoomChannelTest|
-        assert file =~ ~S|alias Phoenix.Web.RoomChannel|
+        assert file =~ ~S|defmodule PhoenixWeb.RoomChannelTest|
+        assert file =~ ~S|subscribe_and_join(PhoenixWeb.RoomChannel|
       end
     end
   end
@@ -71,15 +70,15 @@ defmodule Mix.Tasks.Phx.Gen.ChannelTest do
     in_tmp_project "generates nested channel", fn ->
       Gen.Channel.run ["Admin.Room"]
 
-      assert_file "lib/phoenix/web/channels/admin/room_channel.ex", fn file ->
-        assert file =~ ~S|defmodule Phoenix.Web.Admin.RoomChannel do|
-        assert file =~ ~S|use Phoenix.Web, :channel|
+      assert_file "lib/phoenix_web/channels/admin/room_channel.ex", fn file ->
+        assert file =~ ~S|defmodule PhoenixWeb.Admin.RoomChannel do|
+        assert file =~ ~S|use PhoenixWeb, :channel|
       end
 
-      assert_file "test/phoenix/web/channels/admin/room_channel_test.exs", fn file ->
-        assert file =~ ~S|defmodule Phoenix.Web.Admin.RoomChannelTest|
-        assert file =~ ~S|use Phoenix.Web.ChannelCase|
-        assert file =~ ~S|alias Phoenix.Web.Admin.RoomChannel|
+      assert_file "test/phoenix_web/channels/admin/room_channel_test.exs", fn file ->
+        assert file =~ ~S|defmodule PhoenixWeb.Admin.RoomChannelTest|
+        assert file =~ ~S|use PhoenixWeb.ChannelCase|
+        assert file =~ ~S|subscribe_and_join(PhoenixWeb.Admin.RoomChannel|
       end
     end
   end

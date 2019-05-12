@@ -22,7 +22,7 @@ defmodule Phoenix.Router do
   that dispatch to specific controllers and actions. Those
   macros are named after HTTP verbs. For example:
 
-      defmodule MyApp.Web.Router do
+      defmodule MyAppWeb.Router do
         use Phoenix.Router
 
         get "/pages/:page", PageController, :show
@@ -52,22 +52,22 @@ defmodule Phoenix.Router do
 
   will generate the following named helper:
 
-      MyApp.Web.Router.Helpers.page_path(conn_or_endpoint, :show, "hello")
+      MyAppWeb.Router.Helpers.page_path(conn_or_endpoint, :show, "hello")
       "/pages/hello"
 
-      MyApp.Web.Router.Helpers.page_path(conn_or_endpoint, :show, "hello", some: "query")
+      MyAppWeb.Router.Helpers.page_path(conn_or_endpoint, :show, "hello", some: "query")
       "/pages/hello?some=query"
 
-      MyApp.Web.Router.Helpers.page_url(conn_or_endpoint, :show, "hello")
+      MyAppWeb.Router.Helpers.page_url(conn_or_endpoint, :show, "hello")
       "http://example.com/pages/hello"
 
-      MyApp.Web.Router.Helpers.page_url(conn_or_endpoint, :show, "hello", some: "query")
+      MyAppWeb.Router.Helpers.page_url(conn_or_endpoint, :show, "hello", some: "query")
       "http://example.com/pages/hello?some=query"
 
   If the route contains glob-like patterns, parameters for those have to be given as
   list:
 
-      MyApp.Web.Router.Helpers.dynamic_path(conn_or_endpoint, :show, ["dynamic", "something"])
+      MyAppWeb.Router.Helpers.dynamic_path(conn_or_endpoint, :show, ["dynamic", "something"])
       "/dynamic/something"
 
   The URL generated in the named URL helpers is based on the configuration for
@@ -76,7 +76,7 @@ defmodule Phoenix.Router do
   struct:
 
       uri = %URI{scheme: "https", host: "other.example.com"}
-      MyApp.Web.Router.Helpers.page_url(uri, :show, "hello")
+      MyAppWeb.Router.Helpers.page_url(uri, :show, "hello")
       "https://other.example.com/pages/hello"
 
   The named helper can also be customized with the `:as` option. Given
@@ -86,7 +86,7 @@ defmodule Phoenix.Router do
 
   the named helper will be:
 
-      MyApp.Web.Router.Helpers.special_page_path(conn, :show, "hello")
+      MyAppWeb.Router.Helpers.special_page_path(conn, :show, "hello")
       "/pages/hello"
 
   ## Scopes and Resources
@@ -94,26 +94,26 @@ defmodule Phoenix.Router do
   It is very common in Phoenix applications to namespace all of your
   routes under the application scope:
 
-      scope "/", MyApp do
+      scope "/", MyAppWeb do
         get "/pages/:id", PageController, :show
       end
 
-  The route above will dispatch to `MyApp.PageController`. This syntax
+  The route above will dispatch to `MyAppWeb.PageController`. This syntax
   is not only convenient for developers, since we don't have to repeat
-  the `MyApp.` prefix on all routes, but it also allows Phoenix to put
-  less pressure in the Elixir compiler. If instead we had written:
+  the `MyAppWeb.` prefix on all routes, but it also allows Phoenix to put
+  less pressure on the Elixir compiler. If instead we had written:
 
-    get "/pages/:id", MyApp.PageController, :show
+      get "/pages/:id", MyAppWeb.PageController, :show
 
   The Elixir compiler would infer that the router depends directly on
-  `MyApp.PageController`, which is not true. By using scopes, Phoenix
+  `MyAppWeb.PageController`, which is not true. By using scopes, Phoenix
   can properly hint to the Elixir compiler the controller is not an
   actual dependency of the router. This provides more efficient
   compilation times.
 
   Scopes allow us to scope on any path or even on the helper name:
 
-      scope "/api/v1", MyApp, as: :api_v1 do
+      scope "/api/v1", MyAppWeb, as: :api_v1 do
         get "/pages/:id", PageController, :show
       end
 
@@ -124,7 +124,7 @@ defmodule Phoenix.Router do
   Phoenix also provides a `resources/4` macro that allows developers
   to generate "RESTful" routes to a given resource:
 
-      defmodule MyApp.Web.Router do
+      defmodule MyAppWeb.Router do
         use Phoenix.Router
 
         resources "/pages", PageController, only: [:show]
@@ -147,7 +147,7 @@ defmodule Phoenix.Router do
 
   One can also pass a router explicitly as an argument to the task:
 
-      $ mix phx.routes MyApp.Web.Router
+      $ mix phx.routes MyAppWeb.Router
 
   Check `scope/2` and `resources/4` for more information.
 
@@ -163,7 +163,7 @@ defmodule Phoenix.Router do
 
   For example:
 
-      defmodule MyApp.Web.Router do
+      defmodule MyAppWeb.Router do
         use Phoenix.Router
 
         pipeline :browser do
@@ -186,10 +186,7 @@ defmodule Phoenix.Router do
   No plug is invoked in case no matches were found.
   """
 
-  alias Phoenix.Router.Resource
-  alias Phoenix.Router.Scope
-  alias Phoenix.Router.Route
-  alias Phoenix.Router.Helpers
+  alias Phoenix.Router.{Resource, Scope, Route, Helpers}
 
   @http_methods [:get, :post, :put, :patch, :delete, :options, :connect, :trace, :head]
 
@@ -269,15 +266,19 @@ defmodule Phoenix.Router do
   def __call__({%Plug.Conn{private: %{phoenix_bypass: :all}} = conn, _pipeline, _dispatch}) do
     conn
   end
-  def __call__({conn, pipeline, dispatch}) do
+  def __call__({conn, pipeline, {plug, opts}}) do
     case pipeline.(conn) do
       %Plug.Conn{halted: true} = halted_conn ->
         halted_conn
       %Plug.Conn{} = piped_conn ->
         try do
-          dispatch.(piped_conn)
+          plug.call(piped_conn, plug.init(opts))
+        rescue
+          e in Plug.Conn.WrapperError ->
+            Plug.Conn.WrapperError.reraise(e)
         catch
-          :error, reason -> Plug.Conn.WrapperError.reraise(piped_conn, :error, reason)
+          :error, reason ->
+            Plug.Conn.WrapperError.reraise(piped_conn, :error, reason, System.stacktrace())
         end
     end
   end
@@ -320,7 +321,14 @@ defmodule Phoenix.Router do
     routes_with_exprs = Enum.map(routes, &{&1, Route.exprs(&1)})
 
     Helpers.define(env, routes_with_exprs)
-    matches = Enum.map(routes_with_exprs, &build_match/1)
+    {matches, _} = Enum.map_reduce(routes_with_exprs, %{}, &build_match/2)
+
+    checks =
+      for {%{line: line}, %{dispatch: {plug, params}}} <- routes_with_exprs, into: %{} do
+        quote line: line do
+          {unquote(plug).init(unquote(params)), true}
+        end
+      end
 
     # @anno is used here to avoid warnings if forwarding to root path
     match_404 =
@@ -335,13 +343,16 @@ defmodule Phoenix.Router do
       def __routes__,  do: unquote(Macro.escape(routes))
 
       @doc false
+      def __checks__, do: unquote({:__block__, [], Map.keys(checks)})
+
+      @doc false
       def __helpers__, do: __MODULE__.Helpers
 
       defp prepare(conn) do
         update_in conn.private,
-          &(&1 |> Map.put(:phoenix_pipelines, [])
-          |> Map.put(:phoenix_router, __MODULE__)
-          |> Map.put(__MODULE__, {conn.script_name, @phoenix_forwards}))
+          &(&1
+            |> Map.put(:phoenix_router, __MODULE__)
+            |> Map.put(__MODULE__, {conn.script_name, @phoenix_forwards}))
       end
 
       unquote(matches)
@@ -349,16 +360,56 @@ defmodule Phoenix.Router do
     end
   end
 
-  defp build_match({_route, exprs}) do
-    {conn_block, pipelines, dispatch} = exprs.route_match
+  defp build_match({route, exprs}, known_pipelines) do
+    %{pipe_through: pipe_through} = route
+
+    %{
+      prepare: prepare,
+      dispatch: dispatch,
+      verb_match: verb_match,
+      path: path,
+      host: host
+    } = exprs
+
+    {pipe_name, pipe_definition, known_pipelines} =
+      case known_pipelines do
+        %{^pipe_through => name} ->
+          {name, :ok, known_pipelines}
+
+        %{} ->
+          name = :"__pipe_through#{map_size(known_pipelines)}__"
+          {name, build_pipes(name, pipe_through), Map.put(known_pipelines, pipe_through, name)}
+      end
+
+    quoted =
+      quote line: route.line do
+        unquote(pipe_definition)
+
+        @doc false
+        def __match_route__(var!(conn), unquote(verb_match), unquote(path), unquote(host)) do
+          {unquote(prepare), &unquote(Macro.var(pipe_name, __MODULE__))/1, unquote(dispatch)}
+        end
+      end
+
+    {quoted, known_pipelines}
+  end
+
+  defp build_pipes(name, []) do
+    quote do
+      defp unquote(name)(conn) do
+        Plug.Conn.put_private(conn, :phoenix_pipelines, [])
+      end
+    end
+  end
+
+  defp build_pipes(name, pipe_through) do
+    plugs = pipe_through |> Enum.reverse |> Enum.map(&{&1, [], true})
+    {conn, body} = Plug.Builder.compile(__ENV__, plugs, init_mode: Phoenix.plug_init_mode())
 
     quote do
-      @doc false
-      def __match_route__(var!(conn), unquote(exprs.verb_match), unquote(exprs.path),
-                 unquote(exprs.host)) do
-
-        unquote(conn_block)
-        {var!(conn), unquote(pipelines), unquote(dispatch)}
+      defp unquote(name)(unquote(conn)) do
+        unquote(conn) = Plug.Conn.put_private(unquote(conn), :phoenix_pipelines, unquote(pipe_through))
+        unquote(body)
       end
     end
   end
@@ -377,6 +428,7 @@ defmodule Phoenix.Router do
       match(:move, "/events/:id", EventController, :move)
 
       match(:*, "/any", SomeController, :any)
+
   """
   defmacro match(verb, path, plug, plug_opts, options \\ []) do
     add_route(:match, verb, path, plug, plug_opts, options)
@@ -387,17 +439,22 @@ defmodule Phoenix.Router do
     Generates a route to handle a #{verb} request to the given path.
     """
     defmacro unquote(verb)(path, plug, plug_opts, options \\ []) do
-      verb = unquote(verb)
-      quote bind_quoted: binding() do
-        match(verb, path, plug, plug_opts, options)
-      end
+      add_route(:match, unquote(verb), path, plug, plug_opts, options)
     end
   end
 
   defp add_route(kind, verb, path, plug, plug_opts, options) do
     quote do
-      @phoenix_routes Scope.route(__MODULE__, unquote(kind), unquote(verb), unquote(path),
-                                  unquote(plug), unquote(plug_opts), unquote(options))
+      @phoenix_routes Scope.route(
+        __ENV__.line,
+        __ENV__.module,
+        unquote(kind),
+        unquote(verb),
+        unquote(path),
+        unquote(plug),
+        unquote(plug_opts),
+        unquote(options)
+      )
     end
   end
 
@@ -434,13 +491,18 @@ defmodule Phoenix.Router do
     compiler =
       quote unquote: false do
         Scope.pipeline(__MODULE__, plug)
-        {conn, body} = Plug.Builder.compile(__ENV__, @phoenix_pipeline, [])
+        {conn, body} = Plug.Builder.compile(__ENV__, @phoenix_pipeline,
+          init_mode: Phoenix.plug_init_mode())
+
         def unquote(plug)(unquote(conn), _) do
           try do
             unquote(body)
+          rescue
+            e in Plug.Conn.WrapperError ->
+              Plug.Conn.WrapperError.reraise(e)
           catch
             :error, reason ->
-              Plug.Conn.WrapperError.reraise(unquote(conn), :error, reason)
+              Plug.Conn.WrapperError.reraise(unquote(conn), :error, reason, System.stacktrace())
           end
         end
         @phoenix_pipeline nil
@@ -573,9 +635,6 @@ defmodule Phoenix.Router do
     add_resources path, controller, [], do: nested_context
   end
 
-  @doc """
-  See `resources/4`.
-  """
   defmacro resources(path, controller, opts) do
     add_resources path, controller, opts, do: nil
   end
@@ -621,7 +680,9 @@ defmodule Phoenix.Router do
 
     * `:path` - a string containing the path scope
     * `:as` - a string or atom containing the named helper scope
-    * `:alias` - an alias (atom) containing the controller scope
+    * `:alias` - an alias (atom) containing the controller scope.
+      When set, this value may be overridden per route by passing `alias: false`
+      to route definitions, such as `get`, `post`, etc.
     * `:host` - a string containing the host scope, or prefix host scope,
       ie `"foo.bar.com"`, `"foo."`
     * `:private` - a map of private data to merge into the connection when a route matches
@@ -696,6 +757,22 @@ defmodule Phoenix.Router do
   end
 
   @doc """
+  Returns the full alias with the current scope's aliased prefix.
+
+  Useful for applying the same short-hand alias handling to
+  other values besides the second argument in route definitions.
+
+  ## Examples
+
+      scope "/", MyPrefix do
+        get "/", ProxyPlug, controller: scoped_alias(__MODULE__, MyController)
+      end
+  """
+  def scoped_alias(router_module, alias) do
+    Scope.expand_alias(router_module, alias)
+  end
+
+  @doc """
   Forwards a request at the given path to a plug.
 
   All paths that match the forwarded prefix will be sent to
@@ -725,8 +802,7 @@ defmodule Phoenix.Router do
     router_opts = Keyword.put(router_opts, :as, nil)
 
     quote unquote: true, bind_quoted: [path: path, plug: plug] do
-      path_segments = Route.forward_path_segments(path, plug, @phoenix_forwards)
-      @phoenix_forwards Map.put(@phoenix_forwards, plug, path_segments)
+      plug = Scope.register_forwards(__MODULE__, path, plug)
       unquote(add_route(:forward, :*, path, plug, plug_opts, router_opts))
     end
   end

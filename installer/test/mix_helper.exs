@@ -16,36 +16,59 @@ defmodule MixHelper do
     Path.expand("../../tmp", __DIR__)
   end
 
+  defp random_string(len) do
+    len |> :crypto.strong_rand_bytes() |> Base.encode64() |> binary_part(0, len)
+  end
+
   def in_tmp(which, function) do
-    path = Path.join(tmp_path(), to_string(which))
-    File.rm_rf! path
-    File.mkdir_p! path
-    File.cd! path, function
+    path = Path.join([tmp_path(), random_string(10), to_string(which)])
+
+    try do
+      File.rm_rf!(path)
+      File.mkdir_p!(path)
+      File.cd!(path, function)
+    after
+      File.rm_rf!(path)
+    end
   end
 
   def in_tmp_project(which, function) do
     conf_before = Application.get_env(:phoenix, :generators) || []
-    path = Path.join(tmp_path(), to_string(which))
-    File.rm_rf! path
-    File.mkdir_p! path
-    File.cd! path
-    File.touch!("mix.exs")
-    function.()
-    Application.put_env(:phoenix, :generators, conf_before)
+    path = Path.join([tmp_path(), random_string(10), to_string(which)])
+
+    try do
+      File.rm_rf!(path)
+      File.mkdir_p!(path)
+      File.cd!(path, fn ->
+        File.touch!("mix.exs")
+        function.()
+      end)
+    after
+      File.rm_rf!(path)
+      Application.put_env(:phoenix, :generators, conf_before)
+    end
   end
 
   def in_tmp_umbrella_project(which, function) do
     conf_before = Application.get_env(:phoenix, :generators) || []
-    path = Path.join(tmp_path(), to_string(which))
-    apps_path = Path.join(path, "apps")
-    File.rm_rf! path
-    File.mkdir_p! path
-    File.mkdir_p! apps_path
-    File.cd! path
-    File.touch!("mix.exs")
-    File.cd! apps_path
-    function.()
-    Application.put_env(:phoenix, :generators, conf_before)
+    path = Path.join([tmp_path(), random_string(10), to_string(which)])
+
+    try do
+      apps_path = Path.join(path, "apps")
+      config_path = Path.join(path, "config")
+      File.rm_rf!(path)
+      File.mkdir_p!(path)
+      File.mkdir_p!(apps_path)
+      File.mkdir_p!(config_path)
+      File.touch!(Path.join(path, "mix.exs"))
+      for file <- ~w(config.exs dev.exs test.exs prod.exs prod.secret.exs) do
+        File.write!(Path.join(config_path, file), "use Mix.Config\n")
+      end
+      File.cd!(apps_path, function)
+    after
+      Application.put_env(:phoenix, :generators, conf_before)
+      File.rm_rf!(path)
+    end
   end
 
   def in_project(app, path, fun) do
@@ -92,18 +115,20 @@ defmodule MixHelper do
 
   def umbrella_mixfile_contents do
     """
-defmodule Umbrella.Mixfile do
-  use Mix.Project
+    defmodule Umbrella.MixProject do
+      use Mix.Project
 
-  def project do
-    [apps_path: "apps",
-     deps: deps()]
-  end
+      def project do
+        [
+          apps_path: "apps",
+          deps: deps()
+        ]
+      end
 
-  defp deps do
-    []
-  end
-end
+      defp deps do
+        []
+      end
+    end
     """
   end
 

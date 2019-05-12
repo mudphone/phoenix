@@ -12,13 +12,13 @@ defmodule Mix.Tasks.Phx.Gen.Channel do
 
   For a regular application:
 
-    * a channel in lib/my_app/web/channels
-    * a channel_test in test/my_app/web/channels
+    * a channel in `lib/my_app_web/channels`
+    * a channel test in `test/my_app_web/channels`
 
   For an umbrella application:
 
-    * a channel in lib/my_app/channels
-    * a channel_test in test/my_app/channels
+    * a channel in `apps/my_app_web/lib/app_name_web/channels`
+    * a channel test in `apps/my_app_web/test/my_app_web/channels`
 
   """
   use Mix.Task
@@ -37,7 +37,7 @@ defmodule Mix.Tasks.Phx.Gen.Channel do
 
     Mix.Phoenix.check_module_name_availability!(binding[:module] <> "Channel")
 
-    Mix.Phoenix.copy_from paths(), "priv/templates/phx.gen.channel", "", binding, [
+    Mix.Phoenix.copy_from paths(), "priv/templates/phx.gen.channel", binding, [
       {:eex, "channel.ex",       Path.join(web_prefix, "channels/#{binding[:path]}_channel.ex")},
       {:eex, "channel_test.exs", Path.join(test_prefix, "channels/#{binding[:path]}_channel_test.exs")},
     ]
@@ -56,6 +56,7 @@ defmodule Mix.Tasks.Phx.Gen.Channel do
     mix phx.gen.channel expects just the module name:
 
         mix phx.gen.channel Room
+
     """
   end
 

@@ -5,7 +5,7 @@ defmodule <%= web_namespace %>.ChannelCase do
 
   Such tests rely on `Phoenix.ChannelTest` and also
   import other functionality to make it easier
-  to build common datastructures and query the data layer.
+  to build common data structures and query the data layer.
 
   Finally, if the test case interacts with the database,
   it cannot be async. For this reason, every test runs
@@ -23,19 +23,19 @@ defmodule <%= web_namespace %>.ChannelCase do
       # The default endpoint for testing
       @endpoint <%= endpoint_module %>
     end
-  end
+  end<%= if ecto do %>
 
-<%= if ecto do %>
   setup tags do
     <%= adapter_config[:test_setup] %>
+
     unless tags[:async] do
       <%= adapter_config[:test_async] %>
     end
+
     :ok
-  end
-<% else %>
+  end<% else %>
+
   setup _tags do
     :ok
-  end
-<% end %>
+  end<% end %>
 end

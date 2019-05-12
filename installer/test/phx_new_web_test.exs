@@ -17,7 +17,7 @@ defmodule Mix.Tasks.Phx.New.WebTest do
   test "new without args" do
     in_tmp_umbrella_project "new without args", fn ->
       assert capture_io(fn -> Mix.Tasks.Phx.New.Web.run([]) end) =~
-             "Creates a new Phoenix web project within an umbrella application."
+             "Creates a new Phoenix web project within an umbrella project."
     end
   end
 
@@ -33,9 +33,12 @@ defmodule Mix.Tasks.Phx.New.WebTest do
     in_tmp_umbrella_project "new with defaults", fn ->
       Mix.Tasks.Phx.New.Web.run([@app_name])
 
-      assert_file "#{@app_name}/config/config.exs", fn file ->
-        assert file =~ "config :#{@app_name}, :generators,"
-        assert file =~ "context_app: false"
+      assert_file "../config/config.exs", fn file ->
+        assert file =~ "generators: [context_app: false]"
+      end
+
+      assert_file "#{@app_name}/mix.exs", fn file ->
+        assert file =~ "{:jason, \"~> 1.0\"}"
       end
 
       # Install dependencies?

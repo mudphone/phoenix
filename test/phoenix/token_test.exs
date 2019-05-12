@@ -2,6 +2,8 @@ defmodule Phoenix.TokenTest do
   use ExUnit.Case, async: true
   alias Phoenix.Token
 
+  @moduletag :capture_log
+
   defmodule TokenEndpoint do
     def config(:secret_key_base), do: "abc123"
   end
@@ -44,6 +46,7 @@ defmodule Phoenix.TokenTest do
     assert Token.verify(conn(), "id", token, max_age: -1000) == {:error, :expired}
     assert Token.verify(conn(), "id", token, max_age: 100) == {:ok, 1}
     assert Token.verify(conn(), "id", token, max_age: -100) == {:error, :expired}
+    assert Token.verify(conn(), "id", token, max_age: 0) == {:error, :expired}
 
     token = Token.sign(conn(), "id", 1)
     assert Token.verify(conn(), "id", token, max_age: 0.1) == {:ok, 1}
@@ -51,9 +54,14 @@ defmodule Phoenix.TokenTest do
     assert Token.verify(conn(), "id", token, max_age: 0.1) == {:error, :expired}
   end
 
+  test "supports :infinity for max age" do
+    token = Token.sign(conn(), "id", 1)
+    assert Token.verify(conn(), "id", token, max_age: :infinity) == {:ok, 1}
+  end
+
   test "supports signed_at in seconds" do
     seconds_in_day = 24*60*60
-    day_ago_seconds = System.system_time(:seconds) - seconds_in_day
+    day_ago_seconds = System.system_time(:second) - seconds_in_day
     token = Token.sign(conn(), "id", 1, signed_at: day_ago_seconds)
     assert Token.verify(conn(), "id", token, max_age: seconds_in_day + 1) == {:ok, 1}
     assert Token.verify(conn(), "id", token, max_age: seconds_in_day - 1) == {:error, :expired}

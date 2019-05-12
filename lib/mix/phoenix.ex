@@ -26,17 +26,15 @@ defmodule Mix.Phoenix do
   Files are evaluated against EEx according to
   the given binding.
   """
-  def copy_from(apps, source_dir, target_dir, binding, mapping) when is_list(mapping) do
+  def copy_from(apps, source_dir, binding, mapping) when is_list(mapping) do
     roots = Enum.map(apps, &to_app_source(&1, source_dir))
 
-    for {format, source_file_path, target_file_path} <- mapping do
+    for {format, source_file_path, target} <- mapping do
       source =
         Enum.find_value(roots, fn root ->
           source = Path.join(root, source_file_path)
           if File.exists?(source), do: source
         end) || raise "could not find #{source_file_path} in any of the sources"
-
-      target = join_target_path(target_dir, target_file_path)
 
       case format do
         :text -> Mix.Generator.create_file(target, File.read!(source))
@@ -51,26 +49,21 @@ defmodule Mix.Phoenix do
     end
   end
 
-  defp join_target_path(_target_dir, "/" <> _ = target_file_path) do
-    target_file_path
-  end
-  defp join_target_path(target_dir, target_file_path) do
-    Path.join(target_dir, target_file_path)
-  end
-
   defp to_app_source(path, source_dir) when is_binary(path),
     do: Path.join(path, source_dir)
   defp to_app_source(app, source_dir) when is_atom(app),
     do: Application.app_dir(app, source_dir)
 
   @doc """
-  Inflect path, scope, alias and more from the given name.
+  Inflects path, scope, alias and more from the given name.
+
+  ## Examples
 
       iex> Mix.Phoenix.inflect("user")
       [alias: "User",
        human: "User",
        base: "Phoenix",
-       web_module: "Phoenix.Web",
+       web_module: "PhoenixWeb",
        module: "Phoenix.User",
        scoped: "User",
        singular: "user",
@@ -80,7 +73,7 @@ defmodule Mix.Phoenix do
       [alias: "User",
        human: "User",
        base: "Phoenix",
-       web_module: "Phoenix.Web",
+       web_module: "PhoenixWeb",
        module: "Phoenix.Admin.User",
        scoped: "Admin.User",
        singular: "user",
@@ -90,14 +83,15 @@ defmodule Mix.Phoenix do
       [alias: "SuperUser",
        human: "Super user",
        base: "Phoenix",
-       web_module: "Phoenix.Web",
+       web_module: "PhoenixWeb",
        module: "Phoenix.Admin.SuperUser",
        scoped: "Admin.SuperUser",
        singular: "super_user",
        path: "admin/super_user"]
+
   """
   def inflect(singular) do
-    base       = Mix.Phoenix.base
+    base       = Mix.Phoenix.base()
     web_module = base |> web_module() |> inspect()
     scoped     = Phoenix.Naming.camelize(singular)
     path       = Phoenix.Naming.underscore(scoped)
@@ -156,7 +150,7 @@ defmodule Mix.Phoenix do
   end
 
   @doc """
-  Returns the otp app from the Mix project configuration.
+  Returns the OTP app from the Mix project configuration.
   """
   def otp_app do
     Mix.Project.config |> Keyword.fetch!(:app)
@@ -179,8 +173,8 @@ defmodule Mix.Phoenix do
   @doc """
   The paths to look for template files for generators.
 
-  Defaults to checking the current app's priv directory,
-  and falls back to phoenix's priv directory.
+  Defaults to checking the current app's `priv` directory,
+  and falls back to Phoenix's `priv` directory.
   """
   def generator_paths do
     [".", :phoenix]
@@ -203,7 +197,7 @@ defmodule Mix.Phoenix do
     this_app = otp_app()
 
     if ctx_app == this_app do
-      Path.join(["lib", to_string(this_app), "web", rel_path])
+      Path.join(["lib", "#{this_app}_web", rel_path])
     else
       Path.join(["lib", to_string(this_app), rel_path])
     end
@@ -242,7 +236,7 @@ defmodule Mix.Phoenix do
   end
 
   @doc """
-  Returns the otp context app.
+  Returns the OTP context app.
   """
   def context_app do
     this_app = otp_app()
@@ -260,7 +254,7 @@ defmodule Mix.Phoenix do
     this_app = otp_app()
 
     if ctx_app == this_app do
-      Path.join(["test", to_string(this_app), "web", rel_path])
+      Path.join(["test", "#{this_app}_web", rel_path])
     else
       Path.join(["test", to_string(this_app), rel_path])
     end
@@ -285,6 +279,9 @@ defmodule Mix.Phoenix do
         via cli option:
 
             mix phx.gen.[task] --context-app some_app
+
+        Note: cli option only works when `context_app` is not set to `false`
+        in the config.
         """
       {app, _path} ->
         {:ok, app}
@@ -313,6 +310,7 @@ defmodule Mix.Phoenix do
         Existing deps:
 
             #{inspect Map.keys(deps)}
+
         """
     end
   end
@@ -339,11 +337,14 @@ defmodule Mix.Phoenix do
     end
   end
 
-  defp web_module(base) do
-    if base |> to_string() |> String.ends_with?(".Web") do
-      Module.concat(base, nil)
+  @doc """
+  Returns the web module prefix.
+  """
+  def web_module(base) do
+    if base |> to_string() |> String.ends_with?("Web") do
+      Module.concat([base])
     else
-      Module.concat(base, "Web")
+      Module.concat(["#{base}Web"])
     end
   end
 end

@@ -30,11 +30,29 @@ defmodule Mix.Phoenix.Schema do
             web_path: nil,
             web_namespace: nil,
             context_app: nil,
-            route_helper: nil
+            route_helper: nil,
+            migration_module: nil
 
-  @valid_types [:integer, :float, :decimal, :boolean, :map, :string,
-                :array, :references, :text, :date, :time,
-                :naive_datetime, :utc_datetime, :uuid, :binary]
+  @valid_types [
+    :integer,
+    :float,
+    :decimal,
+    :boolean,
+    :map,
+    :string,
+    :array,
+    :references,
+    :text,
+    :date,
+    :time,
+    :time_usec,
+    :naive_datetime,
+    :naive_datetime_usec,
+    :utc_datetime,
+    :utc_datetime_usec,
+    :uuid,
+    :binary
+  ]
 
   def valid_types, do: @valid_types
 
@@ -72,7 +90,6 @@ defmodule Mix.Phoenix.Schema do
         {key, _} -> key
         nil -> :some_field
       end
-    route_helper = if web_path, do: "#{web_path}_#{singular}", else: singular
 
     %Schema{
       opts: opts,
@@ -103,10 +120,11 @@ defmodule Mix.Phoenix.Schema do
       },
       web_namespace: web_namespace,
       web_path: web_path,
-      route_helper: route_helper,
+      route_helper: route_helper(web_path, singular),
       sample_id: sample_id(opts),
       context_app: ctx_app,
-      generate?: generate?}
+      generate?: generate?,
+      migration_module: migration_module()}
   end
 
   @doc """
@@ -161,7 +179,9 @@ defmodule Mix.Phoenix.Schema do
     |> Map.fetch!(field)
     |> inspect_value(value)
   end
-  defp inspect_value(:decimal, value), do: "Decimal.new(\"#{to_string(value)}\")"
+  defp inspect_value(:decimal, value), do: "Decimal.new(\"#{value}\")"
+  defp inspect_value(:utc_datetime, value), do: "DateTime.from_naive!(~N[#{value}], \"Etc/UTC\")"
+  defp inspect_value(:utc_datetime_usec, value), do: "DateTime.from_naive!(~N[#{value}], \"Etc/UTC\")"
   defp inspect_value(_type, value), do: inspect(value)
 
   defp drop_unique(info) do
@@ -188,12 +208,13 @@ defmodule Mix.Phoenix.Schema do
         :map            -> %{}
         :text           -> "some #{key}"
         :date           -> %Date{year: 2010, month: 4, day: 17}
-        :time           -> %Time{hour: 14, minute: 0, second: 0, microsecond: {0, 6}}
+        :time           -> %Time{hour: 14, minute: 0, second: 0}
+        :time_usec      -> %Time{hour: 14, minute: 0, second: 0, microsecond: {0, 6}}
         :uuid           -> "7488a646-e31f-11e4-aace-600308960662"
-        :utc_datetime   -> %DateTime{day: 17, hour: 14, microsecond: {0, 6},
-                            minute: 0, month: 4, second: 0, std_offset: 0, time_zone: "Etc/UTC",
-                            utc_offset: 0, year: 2010, zone_abbr: "UTC"}
-        :naive_datetime -> ~N[2010-04-17 14:00:00.000000]
+        :utc_datetime   -> "2010-04-17T14:00:00Z"
+        :utc_datetime_usec -> "2010-04-17T14:00:00.000000Z"
+        :naive_datetime -> ~N[2010-04-17 14:00:00]
+        :naive_datetime_usec -> ~N[2010-04-17 14:00:00.000000]
         _               -> "some #{key}"
     end
   end
@@ -207,12 +228,13 @@ defmodule Mix.Phoenix.Schema do
         :map            -> %{}
         :text           -> "some updated #{key}"
         :date           -> %Date{year: 2011, month: 5, day: 18}
-        :time           -> %Time{hour: 15, minute: 1, second: 1, microsecond: {0, 6}}
+        :time           -> %Time{hour: 15, minute: 1, second: 1}
+        :time_usec      -> %Time{hour: 15, minute: 1, second: 1, microsecond: {0, 6}}
         :uuid           -> "7488a646-e31f-11e4-aace-600308960668"
-        :utc_datetime   -> %DateTime{day: 18, hour: 15, microsecond: {0, 6},
-                            minute: 1, month: 5, second: 1, std_offset: 0, time_zone: "Etc/UTC",
-                            utc_offset: 0, year: 2011, zone_abbr: "UTC"}
-        :naive_datetime -> ~N[2011-05-18 15:01:01.000000]
+        :utc_datetime   -> "2011-05-18T15:01:01Z"
+        :utc_datetime_usec   -> "2011-05-18T15:01:01.000000Z"
+        :naive_datetime -> ~N[2011-05-18 15:01:01]
+        :naive_datetime_usec -> ~N[2011-05-18 15:01:01.000000]
         _               -> "some updated #{key}"
     end
   end
@@ -235,7 +257,7 @@ defmodule Mix.Phoenix.Schema do
 
   defp partition_attrs_and_assocs(schema_module, attrs) do
     {assocs, attrs} =
-      Enum.partition(attrs, fn
+      Enum.split_with(attrs, fn
         {_, {:references, _}} ->
           true
         {key, :references} ->
@@ -315,6 +337,19 @@ defmodule Mix.Phoenix.Schema do
       Keyword.get(opts, :sample_binary_id, "11111111-1111-1111-1111-111111111111")
     else
       -1
+    end
+  end
+
+  defp route_helper(web_path, singular) do
+    "#{web_path}_#{singular}"
+    |> String.trim_leading("_")
+    |> String.replace("/", "_")
+  end
+
+  defp migration_module do
+    case Application.get_env(:ecto_sql, :migration_module, Ecto.Migration) do
+      migration_module when is_atom(migration_module) -> migration_module
+      other -> Mix.raise "Expected :migration_module to be a module, got: #{inspect(other)}"
     end
   end
 end

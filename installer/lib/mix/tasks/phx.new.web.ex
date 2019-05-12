@@ -9,7 +9,7 @@ defmodule Mix.Tasks.Phx.New.Web do
       $ cd my_umbrella/apps
       $ mix phx.new.web APP [--module MODULE] [--app APP]
 
-  This task is inteded to create a bare Phoenix project without
+  This task is intended to create a bare Phoenix project without
   database integration, which interfaces with your greater
   umbrella application(s).
 
@@ -19,7 +19,7 @@ defmodule Mix.Tasks.Phx.New.Web do
 
   Is equivalent to:
 
-      mix phx.new.web hello_web --module Hello.Web
+      mix phx.new.web hello_web --module HelloWeb
 
   Supports the same options as the `phx.new` task.
   See `Mix.Tasks.Phx.New` for details.
@@ -37,6 +37,6 @@ defmodule Mix.Tasks.Phx.New.Web do
       Mix.raise "The web task can only be run within an umbrella's apps directory"
     end
 
-    Mix.Tasks.Phx.New.run(args, Phx.New.Web)
+    Mix.Tasks.Phx.New.run(args, Phx.New.Web, :web_path)
   end
 end
